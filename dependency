@@ -1,0 +1,34 @@
+apt-get update && apt-get install -y --no-install-recommends \
+  build-essential \
+  git \
+  libgoogle-glog-dev \
+  libgtest-dev \
+  libiomp-dev \
+  libleveldb-dev \
+  liblmdb-dev \
+  libopencv-dev \
+  libopenmpi-dev \
+  libsnappy-dev \
+  openmpi-bin \
+  openmpi-doc \
+  python-dev \
+  python-pip
+
+pip install --upgrade pip
+pip install setuptools wheel
+pip install future numpy protobuf typing hypothesis pyyaml
+apt-get install -y --no-install-recommends \
+      libgflags-dev \
+      cmake
+      
+git clone https://github.com/pytorch/pytorch.git
+pytorch
+git checkout v1.0.1
+git submodule update --init --recursive
+python setup.py install
+
+git clone https://github.com/01org/mkl-dnn.git
+cd mkl-dnn
+cd scripts && ./prepare_mkl.sh && cd ..
+mkdir -p build && cd build && cmake .. && make
+sudo make install
