@@ -1,0 +1,13 @@
+include/*
+!include/.keep
+
+include-mkl/*
+!include-mkl/.keep
+
+include-pytorch/*
+!include-pytorch/.keep
+
+lib/*
+!lib/.keep
+
+.vscode

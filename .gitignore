@@ -1,0 +1,6 @@
+*.o
+*.a
+*.c2
+caffe2-go-wrapper
+
+.vscode
