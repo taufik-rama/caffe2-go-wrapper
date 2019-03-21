@@ -8,7 +8,7 @@
 /**
  * This struct will act as a return value type for the prediction
  */
-struct predict_result {
+struct cf2_predict_result {
     
     // `label` is the predicted label
     char *label;

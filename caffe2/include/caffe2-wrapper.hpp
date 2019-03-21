@@ -11,7 +11,7 @@ extern "C" {
      * Initialize the caffe2 model located on `path`
      * returns 0 on success
      */
-    int load_model(const char *path);
+    int cf2_load_model(const char *path);
 
     /**
      * Predict a given keyword
@@ -20,5 +20,5 @@ extern "C" {
      * `result_size`: The allocation size of `result`
      * returns 0 on success
      */
-    int predict(const char *query_in, struct predict_result *result, int result_size);
+    int cf2_predict(const char *query_in, struct cf2_predict_result *result, int result_size);
 }

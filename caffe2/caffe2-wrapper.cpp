@@ -40,13 +40,13 @@ void tokenize(std::vector<std::string> &result, std::string &in) {
 
 extern "C" {
 
-    caffe2::NetDef net_graph;
-    caffe2::Workspace workspace("workspace");
-    bool initialized = false;
+    caffe2::NetDef cf2_net_graph;
+    caffe2::Workspace cf2_workspace("workspace");
+    bool cf2_initialized = false;
 
-    int load_model(const char *path) {
+    int cf2_load_model(const char *path) {
 
-        if (!initialized) {
+        if (!cf2_initialized) {
 
             if(access(path, F_OK) != 0) {
                 return -1;
@@ -54,12 +54,12 @@ extern "C" {
 
             auto db = std::unique_ptr<caffe2::db::DBReader>(new caffe2::db::DBReader("minidb", path));
 
-            auto meta_net = caffe2::predictor_utils::runGlobalInitialization(std::move(db), &workspace);
+            auto meta_net = caffe2::predictor_utils::runGlobalInitialization(std::move(db), &cf2_workspace);
             const auto net_init = caffe2::predictor_utils::getNet(
                 *meta_net.get(),
                 caffe2::PredictorConsts::default_instance().predict_init_net_type());
 
-            if(!workspace.RunNetOnce(net_init)) {
+            if(!cf2_workspace.RunNetOnce(net_init)) {
                 return -1;
             }
 
@@ -67,16 +67,16 @@ extern "C" {
                 *meta_net.get(),
                 caffe2::PredictorConsts::default_instance().predict_net_type()));
 
-            CAFFE_ENFORCE(workspace.CreateNet(net));
+            CAFFE_ENFORCE(cf2_workspace.CreateNet(net));
 
-            net_graph = net;
-            initialized = true;
+            cf2_net_graph = net;
+            cf2_initialized = true;
         }
 
         return 0;
     }
 
-    int predict(const char *query, struct predict_result *result, int result_size) {
+    int cf2_predict(const char *query, struct cf2_predict_result *result, int result_size) {
 
         // Pre-process: tokenize input doc
         std::vector<std::string> tokens;
@@ -86,15 +86,15 @@ extern "C" {
         // Feed input to model as tensors
         caffe2::Tensor tensor_val = caffe2::TensorCPUFromValues<std::string>(
             {static_cast<int64_t>(1), static_cast<int64_t>(tokens.size())}, {tokens});
-        BlobGetMutableTensor(workspace.CreateBlob("tokens_vals_str:value"), caffe2::CPU)
+        BlobGetMutableTensor(cf2_workspace.CreateBlob("tokens_vals_str:value"), caffe2::CPU)
             ->CopyFrom(tensor_val);
         caffe2::Tensor tensor_lens = caffe2::TensorCPUFromValues<int>(
             {static_cast<int64_t>(1)}, {static_cast<int>(tokens.size())});
-        BlobGetMutableTensor(workspace.CreateBlob("tokens_lens"), caffe2::CPU)
+        BlobGetMutableTensor(cf2_workspace.CreateBlob("tokens_lens"), caffe2::CPU)
             ->CopyFrom(tensor_lens);
 
         // Run the model
-        if(!workspace.RunNet(net_graph.name())) {
+        if(!cf2_workspace.RunNet(cf2_net_graph.name())) {
             return -1;
         }
 
@@ -102,14 +102,14 @@ extern "C" {
         for (int i = 0; i < result_size; i++) {
 
             // If the requested size is bigger than available data, pad it with null terminator
-            if(i >= net_graph.external_output().size()) {
+            if(i >= cf2_net_graph.external_output().size()) {
                 for(int j = 0; j < (result_size - i); j++) {
                     result[i + j].label[0] = '\0';
                 }
                 break;
             }
 
-            std::string label = net_graph.external_output()[i];
+            std::string label = cf2_net_graph.external_output()[i];
             if(label.length() > 32) {
                 strncpy(result[i].label, label.c_str(), 32);
                 result[i].label[32] = '\0';
@@ -119,7 +119,7 @@ extern "C" {
             }
 
 
-            const caffe2::Tensor *tensor_scores = &workspace.GetBlob(label)->Get<caffe2::Tensor>();
+            const caffe2::Tensor *tensor_scores = &cf2_workspace.GetBlob(label)->Get<caffe2::Tensor>();
             for (int j = 0; j < tensor_scores->numel(); j++) {
 
                 if(j >= 8) {

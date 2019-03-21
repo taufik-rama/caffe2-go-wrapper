@@ -5,8 +5,8 @@ package main
 // #cgo LDFLAGS: -Wl,-rpath=${SRCDIR}/caffe2/lib
 // #include <stdlib.h>
 // #include <caffe2-wrapper-types.hpp>
-// int load_model(const char *path);
-// int predict(const char *query_in, struct predict_result *result, int result_size);
+// int cf2_load_model(const char *path);
+// int cf2_predict(const char *query_in, struct cf2_predict_result *result, int result_size);
 import "C"
 
 import (
@@ -24,7 +24,7 @@ type Model struct {
 // FastTest needs some initialization for the model binary located on `file`.
 func New(file string) (*Model, error) {
 
-	status := C.load_model(C.CString(file))
+	status := C.cf2_load_model(C.CString(file))
 
 	if status != 0 {
 		return nil, fmt.Errorf("Cannot initialize model on `%s`", file)
@@ -43,7 +43,7 @@ func (m *Model) Predict(keyword string) error {
 	}
 
 	resultSize := 16
-	result := make([]C.struct_predict_result, resultSize)
+	result := make([]C.struct_cf2_predict_result, resultSize)
 
 	resultLabelSize := 32
 	for i := 0; i < resultSize; i++ {
@@ -55,7 +55,7 @@ func (m *Model) Predict(keyword string) error {
 		}
 	}()
 
-	status := C.predict(
+	status := C.cf2_predict(
 		C.CString(keyword),
 		&result[0],
 		C.int(resultSize),
