@@ -49,6 +49,11 @@ func (m *Model) Predict(keyword string) error {
 	for i := 0; i < resultSize; i++ {
 		result[i].label = (*C.char)(C.malloc(C.ulong(resultLabelSize)))
 	}
+	defer func() {
+		for i := 0; i < resultSize; i++ {
+			C.free(unsafe.Pointer(result[i].label))
+		}
+	}()
 
 	status := C.predict(
 		C.CString(keyword),
@@ -65,10 +70,6 @@ func (m *Model) Predict(keyword string) error {
 		resultLabel := C.GoString(result[i].label)
 		resultProb := result[i].prob
 		fmt.Println(resultLabel, resultProb)
-	}
-
-	for i := 0; i < resultSize; i++ {
-		C.free(unsafe.Pointer(result[i].label))
 	}
 
 	return nil
