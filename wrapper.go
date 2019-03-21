@@ -1,7 +1,7 @@
 package main
 
 // #cgo CPPFLAGS: -Icaffe2/include/
-// #cgo LDFLAGS: -L${SRCDIR}/caffe2/lib -lcaffe2-wrapper -lpthread -lprotobuf -lstdc++
+// #cgo LDFLAGS: -L${SRCDIR}/caffe2/lib -lcaffe2-wrapper -lc10 -lcaffe2 -lpthread -lprotobuf -lstdc++
 // #cgo LDFLAGS: -Wl,-rpath=${SRCDIR}/caffe2/lib
 // #include <stdlib.h>
 // #include <caffe2-wrapper-types.hpp>
