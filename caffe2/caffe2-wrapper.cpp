@@ -6,6 +6,7 @@
 #undef CAFFE2_USE_MKL
 
 #include <string>
+#include <pthread.h>
 #include "caffe2-wrapper.hpp"
 #include "caffe2-wrapper-types.hpp"
 #include "caffe2/predictor/predictor_utils.h"
@@ -43,6 +44,7 @@ extern "C" {
     caffe2::NetDef cf2_net_graph;
     caffe2::Workspace cf2_workspace("workspace");
     bool cf2_initialized = false;
+    pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
     int cf2_load_model(const char *path) {
 
@@ -83,24 +85,30 @@ extern "C" {
         std::string docCopy = query;
         tokenize(tokens, docCopy);
 
-        // Feed input to model as tensors
+        // Tensor input
         caffe2::Tensor tensor_val = caffe2::TensorCPUFromValues<std::string>(
             {static_cast<int64_t>(1), static_cast<int64_t>(tokens.size())}, {tokens});
-        BlobGetMutableTensor(cf2_workspace.CreateBlob("tokens_vals_str:value"), caffe2::CPU)
-            ->CopyFrom(tensor_val);
         caffe2::Tensor tensor_lens = caffe2::TensorCPUFromValues<int>(
             {static_cast<int64_t>(1)}, {static_cast<int>(tokens.size())});
+
+        pthread_mutex_lock(&mutex);
+
+        // Feed input to model as tensors
+        BlobGetMutableTensor(cf2_workspace.CreateBlob("tokens_vals_str:value"), caffe2::CPU)
+            ->CopyFrom(tensor_val);
         BlobGetMutableTensor(cf2_workspace.CreateBlob("tokens_lens"), caffe2::CPU)
             ->CopyFrom(tensor_lens);
 
         // Run the model
         if(!cf2_workspace.RunNet(cf2_net_graph.name())) {
+            pthread_mutex_unlock(&mutex);
             return -1;
         }
 
-        // Extract and populate results into the response
-        for (int i = 0; i < result_size; i++) {
+        std::vector<std::string> labels;
 
+        // Get the result from net graph
+        for (int i = 0; i < result_size; i++) {
             // If the requested size is bigger than available data, pad it with null terminator
             if(i >= cf2_net_graph.external_output().size()) {
                 for(int j = 0; j < (result_size - i); j++) {
@@ -109,7 +117,23 @@ extern "C" {
                 break;
             }
 
-            std::string label = cf2_net_graph.external_output()[i];
+            labels.push_back(cf2_net_graph.external_output()[i]);
+        }
+
+        pthread_mutex_unlock(&mutex);
+
+        if (labels.size() > result_size) {
+            labels.resize(result_size);
+        }
+
+        // index for `result`
+        int i = 0;
+
+        // Extract and populate results into the response
+        for (auto iter = labels.cbegin(); iter != labels.cend(); i++, iter++) {
+
+            std::string label = *iter;
+
             if(label.length() > 32) {
                 strncpy(result[i].label, label.c_str(), 32);
                 result[i].label[32] = '\0';
@@ -117,7 +141,6 @@ extern "C" {
                 strncpy(result[i].label, label.c_str(), label.length());
                 result[i].label[label.length()] = '\0';
             }
-
 
             const caffe2::Tensor *tensor_scores = &cf2_workspace.GetBlob(label)->Get<caffe2::Tensor>();
             for (int j = 0; j < tensor_scores->numel(); j++) {
