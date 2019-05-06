@@ -41,116 +41,132 @@ void tokenize(std::vector<std::string> &result, std::string &in) {
 
 extern "C" {
 
-    caffe2::NetDef cf2_net_graph;
-    caffe2::Workspace cf2_workspace("workspace");
-    bool cf2_initialized = false;
-    pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+    int cf2_load_model(
+        struct cf2_predictor *predictor, 
+        const char *path
+    ) {
 
-    int cf2_load_model(const char *path) {
-
-        if (!cf2_initialized) {
-
-            if(access(path, F_OK) != 0) {
-                return -1;
-            }
-
-            auto db = std::unique_ptr<caffe2::db::DBReader>(new caffe2::db::DBReader("minidb", path));
-
-            auto meta_net = caffe2::predictor_utils::runGlobalInitialization(std::move(db), &cf2_workspace);
-            const auto net_init = caffe2::predictor_utils::getNet(
-                *meta_net.get(),
-                caffe2::PredictorConsts::default_instance().predict_init_net_type());
-
-            if(!cf2_workspace.RunNetOnce(net_init)) {
-                return -1;
-            }
-
-            auto net = caffe2::NetDef(caffe2::predictor_utils::getNet(
-                *meta_net.get(),
-                caffe2::PredictorConsts::default_instance().predict_net_type()));
-
-            CAFFE_ENFORCE(cf2_workspace.CreateNet(net));
-
-            cf2_net_graph = net;
-            cf2_initialized = true;
+        // check file access
+        if(access(path, F_OK) != 0) {
+            return -1;
         }
+
+        // new caffe2 workspace for each predictor
+        std::unique_ptr<caffe2::Workspace> workspace_ref(new caffe2::Workspace("workspace"));
+        predictor->workspace_ref = std::move(workspace_ref);
+
+        // initialize the workspace
+        auto db = std::unique_ptr<caffe2::db::DBReader>(new caffe2::db::DBReader("minidb", path));
+        auto meta_net = caffe2::predictor_utils::runGlobalInitialization(std::move(db), &(*predictor->workspace_ref));
+
+        const auto net_init = caffe2::predictor_utils::getNet(
+            *meta_net.get(),
+            caffe2::PredictorConsts::default_instance().predict_init_net_type());
+
+        if(!predictor->workspace_ref->RunNetOnce(net_init)) {
+            return -1;
+        }
+
+        std::unique_ptr<caffe2::NetDef> net_ref(new caffe2::NetDef(
+            caffe2::predictor_utils::getNet(
+                *meta_net.get(),
+                caffe2::PredictorConsts::default_instance().predict_net_type()
+            )
+        ));
+        
+        CAFFE_ENFORCE(predictor->workspace_ref->CreateNet(*net_ref));
+
+        // value that'll be used when we predict
+        predictor->net_graph_ref = std::move(net_ref);
 
         return 0;
     }
 
-    int cf2_predict(const char *query, struct cf2_predict_result *result, int result_size) {
+    int cf2_predict(
+        struct cf2_predictor *predictor, 
+        const char *in, 
+        struct cf2_predictor_result out[PREDICT_RESULT_SIZE]
+    ) {
 
-        // Pre-process: tokenize input doc
+        // pre-process: tokenize input
         std::vector<std::string> tokens;
-        std::string docCopy = query;
+        std::string docCopy = in;
         tokenize(tokens, docCopy);
 
-        // Tensor input
+        // tensor input
         caffe2::Tensor tensor_val = caffe2::TensorCPUFromValues<std::string>(
             {static_cast<int64_t>(1), static_cast<int64_t>(tokens.size())}, {tokens});
         caffe2::Tensor tensor_lens = caffe2::TensorCPUFromValues<int>(
             {static_cast<int64_t>(1)}, {static_cast<int>(tokens.size())});
 
-        pthread_mutex_lock(&mutex);
-
-        // Feed input to model as tensors
-        BlobGetMutableTensor(cf2_workspace.CreateBlob("tokens_vals_str:value"), caffe2::CPU)
+        // feed input to model as tensors
+        BlobGetMutableTensor(predictor->workspace_ref->CreateBlob("tokens_vals_str:value"), caffe2::CPU)
             ->CopyFrom(tensor_val);
-        BlobGetMutableTensor(cf2_workspace.CreateBlob("tokens_lens"), caffe2::CPU)
+        BlobGetMutableTensor(predictor->workspace_ref->CreateBlob("tokens_lens"), caffe2::CPU)
             ->CopyFrom(tensor_lens);
 
-        // Run the model
-        if(!cf2_workspace.RunNet(cf2_net_graph.name())) {
-            pthread_mutex_unlock(&mutex);
+        // run the model
+        if (!predictor->workspace_ref->RunNet(predictor->net_graph_ref->name())) {
             return -1;
         }
 
+        // output labels
         std::vector<std::string> labels;
 
-        // Get the result from net graph
-        for (int i = 0; i < result_size; i++) {
-            // If the requested size is bigger than available data, pad it with null terminator
-            if(i >= cf2_net_graph.external_output().size()) {
-                for(int j = 0; j < (result_size - i); j++) {
-                    result[i + j].label[0] = '\0';
+        // get the result from net graph
+        int prediction_size = predictor->net_graph_ref->external_output().size();
+        for (int i = 0; i < PREDICT_RESULT_SIZE; i++) {
+
+            // if the allocated size is bigger than the model output size,
+            // pad it w/ null terminator
+            if(i >= prediction_size) {
+                for(int j = 0; j < (PREDICT_RESULT_SIZE - i); j++) {
+                    out[i + j].label[0] = '\0';
                 }
                 break;
             }
 
-            labels.push_back(cf2_net_graph.external_output()[i]);
+            labels.push_back(predictor->net_graph_ref->external_output()[i]);
         }
 
-        pthread_mutex_unlock(&mutex);
-
-        if (labels.size() > result_size) {
-            labels.resize(result_size);
+        // ignore the excessive result
+        if (labels.size() > PREDICT_RESULT_SIZE) {
+            labels.resize(PREDICT_RESULT_SIZE);
         }
 
-        // index for `result`
+        // index for `out`
         int i = 0;
 
-        // Extract and populate results into the response
+        // extract and populate results into `out`
         for (auto iter = labels.cbegin(); iter != labels.cend(); i++, iter++) {
 
             std::string label = *iter;
 
-            if(label.length() > 32) {
-                strncpy(result[i].label, label.c_str(), 32);
-                result[i].label[32] = '\0';
+            // ignore the rest of the model output label if
+            // it exceed the allocated size
+            if(label.length() > LABEL_SIZE) {
+                std::strncpy(out[i].label, label.c_str(), LABEL_SIZE);
+                out[i].label[LABEL_SIZE] = '\0';
             } else {
-                strncpy(result[i].label, label.c_str(), label.length());
-                result[i].label[label.length()] = '\0';
+                std::strncpy(out[i].label, label.c_str(), label.length());
+                out[i].label[label.length()] = '\0';
             }
 
-            const caffe2::Tensor *tensor_scores = &cf2_workspace.GetBlob(label)->Get<caffe2::Tensor>();
-            for (int j = 0; j < tensor_scores->numel(); j++) {
+            const caffe2::Tensor *tensor_scores = &predictor->workspace_ref->GetBlob(label)->Get<caffe2::Tensor>();
 
-                if(j >= 8) {
+            int prob_size = tensor_scores->numel();
+            for (int j = 0; j < PROB_SIZE; j++) {
+
+                // if the allocated size is bigger than the model output size,
+                // pad it w/ 0
+                if(j >= prob_size) {
+                    for(int k = 0; k < (PROB_SIZE - j); k++) {
+                        out[i].prob[j + k] = 0;
+                    }
                     break;
                 }
-
                 float score = tensor_scores->data<float>()[j];
-                result[i].prob[j] = score;
+                out[i].prob[j] = score;
             }
         }
 

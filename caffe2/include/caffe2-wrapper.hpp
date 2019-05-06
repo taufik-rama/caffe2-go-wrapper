@@ -5,20 +5,32 @@
 
 #pragma once
 
+#include "caffe2-wrapper-types.hpp"
+
 extern "C" {
 
     /**
-     * Initialize the caffe2 model located on `path`
-     * returns 0 on success
+     * Initialize the `predictor` with the model located on `path`
+     * 
+     * Returns status indication successful process (0 for success, fails otherwise)
      */
-    int cf2_load_model(const char *path);
+    int cf2_load_model(
+        struct cf2_predictor *predictor, 
+        const char *path
+    );
 
     /**
      * Predict a given keyword
-     * `query_in`: The actual keyword to predict
-     * `result`: An array of `predict_result` that will contain the result
-     * `result_size`: The allocation size of `result`
-     * returns 0 on success
+     * 
+     * `in` : The actual keyword to predict
+     * `out`: An array of `cf2_predictor_result` that will contains
+     *        the result
+     * 
+     * Returns 0 on success
      */
-    int cf2_predict(const char *query_in, struct cf2_predict_result *result, int result_size);
+    int cf2_predict(
+        struct cf2_predictor *predictor, 
+        const char *in, 
+        struct cf2_predictor_result out[PREDICT_RESULT_SIZE]
+    );
 }
