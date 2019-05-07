@@ -3,20 +3,46 @@ package main
 // #cgo CPPFLAGS: -Icaffe2/include/
 // #cgo LDFLAGS: -L${SRCDIR}/caffe2/lib -lcaffe2-wrapper -lc10 -lcaffe2 -lpthread -lprotobuf -lstdc++
 // #cgo LDFLAGS: -Wl,-rpath=${SRCDIR}/caffe2/lib
+//
 // #include <stdlib.h>
-// #include <caffe2-wrapper-types.hpp>
-// int cf2_load_model(const char *path);
-// int cf2_predict(const char *query_in, struct cf2_predict_result *result, int result_size);
+//
+// // should also be changed on `caffe2-wrapper` source code
+// // this is here to help the developer use the constants on Go
+// #define PREDICT_RESULT_SIZE 16
+// #define LABEL_SIZE 32
+// #define PROB_SIZE 8
+//
+// struct cf2_predictor;
+//
+// struct cf2_predictor_result {
+//
+//     // the string output from caffe2 model
+//     char label[LABEL_SIZE];
+//
+//     // array of prediction values of the `label`
+//     double prob[PROB_SIZE];
+// };
+//
+// int cf2_load_model(
+//     struct cf2_predictor *predictor,
+//     const char *path
+// );
+//
+// int cf2_predict(
+//     struct cf2_predictor *predictor,
+//     const char *in,
+//     struct cf2_predictor_result out[PREDICT_RESULT_SIZE]
+// );
 import "C"
 
 import (
 	"errors"
 	"fmt"
-	"unsafe"
 )
 
 // Model uses Caffe2 for it's prediction
 type Model struct {
+	predictor     *C.struct_cf2_predictor
 	isInitialized bool
 }
 
@@ -24,13 +50,16 @@ type Model struct {
 // FastTest needs some initialization for the model binary located on `file`.
 func New(file string) (*Model, error) {
 
-	status := C.cf2_load_model(C.CString(file))
+	predictor := new(C.struct_cf2_predictor)
+
+	status := C.cf2_load_model(predictor, C.CString(file))
 
 	if status != 0 {
 		return nil, fmt.Errorf("Cannot initialize model on `%s`", file)
 	}
 
 	return &Model{
+		predictor:     predictor,
 		isInitialized: true,
 	}, nil
 }
@@ -42,23 +71,12 @@ func (m *Model) Predict(keyword string) error {
 		return errors.New("The Caffe2 model needs to be initialized first. It's should be done inside the `New()` function")
 	}
 
-	resultSize := 16
-	result := make([]C.struct_cf2_predict_result, resultSize)
-
-	resultLabelSize := 32
-	for i := 0; i < resultSize; i++ {
-		result[i].label = (*C.char)(C.malloc(C.ulong(resultLabelSize)))
-	}
-	defer func() {
-		for i := 0; i < resultSize; i++ {
-			C.free(unsafe.Pointer(result[i].label))
-		}
-	}()
+	result := make([]C.struct_cf2_predictor_result, C.PREDICT_RESULT_SIZE)
 
 	status := C.cf2_predict(
+		m.predictor,
 		C.CString(keyword),
 		&result[0],
-		C.int(resultSize),
 	)
 
 	if status != 0 {
@@ -66,8 +84,8 @@ func (m *Model) Predict(keyword string) error {
 	}
 
 	// Here's the result from C
-	for i := 0; i < resultSize; i++ {
-		resultLabel := C.GoString(result[i].label)
+	for i := 0; i < C.PREDICT_RESULT_SIZE; i++ {
+		resultLabel := C.GoString(&result[i].label[0])
 		resultProb := result[i].prob
 		fmt.Println(resultLabel, resultProb)
 	}
