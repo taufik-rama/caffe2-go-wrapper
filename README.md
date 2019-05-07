@@ -4,7 +4,7 @@
 
 Here's my attempt at wrapping Caffe2 C++ library with Golang CGO.
 
-Note: Caffe2 is now a part of pytorch library, so need to compile it from pytorch repository
+Note: Caffe2 is now a part of pytorch library, so we need to compile it from pytorch repository
 
 ## Requirements
 
@@ -37,7 +37,7 @@ Note: Caffe2 is now a part of pytorch library, so need to compile it from pytorc
 - Clone this repository.
 
     ```Bash
-    $ git clone https://github.com/taufik-rama/caffe2-go-binding
+    $ git clone --depth=1 https://github.com/taufik-rama/caffe2-go-binding
     # Cloning...
     ```
 
@@ -45,7 +45,7 @@ Note: Caffe2 is now a part of pytorch library, so need to compile it from pytorc
 
     ```bash
     # On pytorch directory after compilation
-    $ cp -r torch/include/* /path/to/caffe2/include-pytorch/
+    $ cp -r torch/lib/include/* /path/to/caffe2/include-pytorch/
     ```
 
 - Copy `libc10.so` & `libcaffe2.so` from `pytorch` build result (should be on `build/lib/`) into `caffe2/lib/` directory.

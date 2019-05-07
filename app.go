@@ -10,6 +10,7 @@ func main() {
 		panic(err)
 	}
 
+	// Supply the Caffe2 model file location
 	model2, err := New("basic-model.c2")
 	if err != nil {
 		panic(err)

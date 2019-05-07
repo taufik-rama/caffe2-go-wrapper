@@ -47,7 +47,7 @@ type Model struct {
 }
 
 // New should be used to instantiate the model.
-// FastTest needs some initialization for the model binary located on `file`.
+// Caffe2 needs some initialization for the model binary located on `file`.
 func New(file string) (*Model, error) {
 
 	predictor := new(C.struct_cf2_predictor)
