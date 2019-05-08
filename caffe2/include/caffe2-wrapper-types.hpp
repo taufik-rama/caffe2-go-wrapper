@@ -6,6 +6,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <pthread.h>
 #include "caffe2/predictor/predictor_utils.h"
 
 /**
@@ -35,6 +36,9 @@ struct cf2_predictor {
 
     // caffe2 prediction graph
     std::shared_ptr<caffe2::NetDef> net_graph_ref;
+
+    // prevents race condition during prediction process
+    pthread_mutex_t mutex;
 };
 
 /**

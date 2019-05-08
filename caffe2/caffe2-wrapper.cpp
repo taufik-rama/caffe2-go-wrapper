@@ -79,6 +79,9 @@ extern "C" {
         // value that'll be used when we predict
         predictor->net_graph_ref = std::move(net_ref);
 
+        // mutex lock
+        predictor->mutex = PTHREAD_MUTEX_INITIALIZER;
+
         return 0;
     }
 
@@ -99,6 +102,8 @@ extern "C" {
         caffe2::Tensor tensor_lens = caffe2::TensorCPUFromValues<int>(
             {static_cast<int64_t>(1)}, {static_cast<int>(tokens.size())});
 
+        pthread_mutex_lock(&predictor->mutex);
+
         // feed input to model as tensors
         BlobGetMutableTensor(predictor->workspace_ref->CreateBlob("tokens_vals_str:value"), caffe2::CPU)
             ->CopyFrom(tensor_val);
@@ -107,6 +112,7 @@ extern "C" {
 
         // run the model
         if (!predictor->workspace_ref->RunNet(predictor->net_graph_ref->name())) {
+            pthread_mutex_unlock(&predictor->mutex);
             return -1;
         }
 
@@ -128,6 +134,8 @@ extern "C" {
 
             labels.push_back(predictor->net_graph_ref->external_output()[i]);
         }
+
+        pthread_mutex_unlock(&predictor->mutex);
 
         // ignore the excessive result
         if (labels.size() > PREDICT_RESULT_SIZE) {
@@ -173,3 +181,16 @@ extern "C" {
         return 0;
     }
 }
+
+// uncomment these if you want to build the binary
+// I use it mostly to test the output
+// build with `make bin`
+// int main() {
+//     struct cf2_predictor p;
+//     cf2_load_model(&p, "../basic-model.c2");
+//     struct cf2_predictor_result result[PREDICT_RESULT_SIZE];
+//     cf2_predict(&p, "prediction sentence", result);
+//     for(int i = 0; i < PREDICT_RESULT_SIZE; i++) {
+//         printf("%s\n", result[i].label);
+//     }
+// }
