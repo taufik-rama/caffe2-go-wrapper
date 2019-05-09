@@ -52,7 +52,7 @@ extern "C" {
         }
 
         // new caffe2 workspace for each predictor
-        std::unique_ptr<caffe2::Workspace> workspace_ref(new caffe2::Workspace("workspace"));
+        std::shared_ptr<caffe2::Workspace> workspace_ref(new caffe2::Workspace("workspace"));
         predictor->workspace_ref = std::move(workspace_ref);
 
         // initialize the workspace
@@ -67,7 +67,7 @@ extern "C" {
             return -1;
         }
 
-        std::unique_ptr<caffe2::NetDef> net_ref(new caffe2::NetDef(
+        std::shared_ptr<caffe2::NetDef> net_ref(new caffe2::NetDef(
             caffe2::predictor_utils::getNet(
                 *meta_net.get(),
                 caffe2::PredictorConsts::default_instance().predict_net_type()
@@ -191,6 +191,10 @@ extern "C" {
 //     struct cf2_predictor_result result[PREDICT_RESULT_SIZE];
 //     cf2_predict(&p, "prediction sentence", result);
 //     for(int i = 0; i < PREDICT_RESULT_SIZE; i++) {
-//         printf("%s\n", result[i].label);
+//         printf("%s ", result[i].label);
+//         for(int j = 0; j < PROB_SIZE; j++) {
+//             printf("%f ", result[i].prob[j]);
+//         }
+//         printf("\n");
 //     }
 // }
