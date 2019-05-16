@@ -10,12 +10,11 @@
 extern "C" {
 
     /**
-     * Initialize the `predictor` with the model located on `path`
+     * Initialize the `predictor` with the model located on `path`.
      * 
-     * Returns status indication successful process (0 for success, fails otherwise)
+     * Returns the id / index of the predictor, -1 on error.
      */
-    int cf2_load_model(
-        struct cf2_predictor *predictor, 
+    int cf2_create(
         const char *path
     );
 
@@ -25,12 +24,14 @@ extern "C" {
      * `in` : The actual keyword to predict
      * `out`: An array of `cf2_predictor_result` that will contains
      *        the result
+     * `predictor_index`: The index of the allocated predictor(s) based on
+     *                    `cf2_initialize()` call
      * 
      * Returns 0 on success
      */
     int cf2_predict(
-        struct cf2_predictor *predictor, 
         const char *in, 
-        struct cf2_predictor_result out[PREDICT_RESULT_SIZE]
+        struct cf2_predictor_result out[PREDICT_RESULT_SIZE],
+        const int predictor_index
     );
 }
