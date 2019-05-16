@@ -12,8 +12,6 @@ package main
 // #define LABEL_SIZE 32
 // #define PROB_SIZE 8
 //
-// struct cf2_predictor;
-//
 // struct cf2_predictor_result {
 //
 //     // the string output from caffe2 model
@@ -23,15 +21,14 @@ package main
 //     double prob[PROB_SIZE];
 // };
 //
-// int cf2_load_model(
-//     struct cf2_predictor *predictor,
-//     const char *path
+// int cf2_create(
+// 	   const char *path
 // );
 //
 // int cf2_predict(
-//     struct cf2_predictor *predictor,
-//     const char *in,
-//     struct cf2_predictor_result out[PREDICT_RESULT_SIZE]
+// 	   const char *in, 
+// 	   struct cf2_predictor_result out[PREDICT_RESULT_SIZE],
+// 	   const int predictor_index
 // );
 import "C"
 
@@ -42,7 +39,7 @@ import (
 
 // Model uses Caffe2 for it's prediction
 type Model struct {
-	predictor     *C.struct_cf2_predictor
+	id int
 	isInitialized bool
 }
 
@@ -50,16 +47,14 @@ type Model struct {
 // Caffe2 needs some initialization for the model binary located on `file`.
 func New(file string) (*Model, error) {
 
-	predictor := new(C.struct_cf2_predictor)
+	predictorID := C.cf2_create(C.CString(file))
 
-	status := C.cf2_load_model(predictor, C.CString(file))
-
-	if status != 0 {
+	if predictorID == -1 {
 		return nil, fmt.Errorf("Cannot initialize model on `%s`", file)
 	}
 
 	return &Model{
-		predictor:     predictor,
+		id:     int(predictorID),
 		isInitialized: true,
 	}, nil
 }
@@ -74,9 +69,9 @@ func (m *Model) Predict(keyword string) error {
 	result := make([]C.struct_cf2_predictor_result, C.PREDICT_RESULT_SIZE)
 
 	status := C.cf2_predict(
-		m.predictor,
 		C.CString(keyword),
 		&result[0],
+		C.int(m.id),
 	)
 
 	if status != 0 {
